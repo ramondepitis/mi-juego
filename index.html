@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>LAS CHICAS DE MAX</title>
+  <style>
+    html, body { margin: 0; padding: 0; height: 100%; background: #fff; font-family: sans-serif; }
+    header { width: 100%; display: flex; align-items: center; background: #eee; padding: 10px 20px; box-sizing: border-box; }
+    header h1 { flex-grow: 1; text-align: center; font-size: 24px; margin: 0; }
+    #btn-reiniciar { font-size: 16px; padding: 8px 16px; cursor: pointer; margin-left: auto; }
+    #game-container { position: relative; display: flex; flex-direction: column; justify-content: center; align-items: center; min-height: calc(100% - 60px); background: #fff; transition: background 0.5s; box-sizing: border-box; padding: 20px 0; }
+    .running { background: #ffff99 !important; }
+    #final-message { position: absolute; top: 40%; font-size: 64px; font-weight: bold; color: red; text-shadow: 2px 2px 4px #000; display: none; z-index: 10; }
+    #banner { display: flex; justify-content: space-between; align-items: center; background: #ddd; border-radius: 10px; padding: 15px 30px; min-width: 700px; box-shadow: 0 0 10px rgba(0,0,0,0.2); }
+    .time { background: #007bff; color: #fff; font-size: 48px; font-weight: bold; padding: 10px 20px; border-radius: 8px; }
+    .word { background: #007bff; color: #fff; font-size: 56px; font-weight: bold; padding: 10px 40px; border-radius: 8px; margin: 0 40px; text-align: center; min-width: 200px; transition: background 0.3s; }
+    .score { background: orange; color: #fff; font-size: 48px; font-weight: bold; padding: 10px 20px; border-radius: 8px; }
+    #buttons { margin-top: 20px; display: flex; flex-direction: column; align-items: center; }
+    #row1 { display: flex; justify-content: center; gap: 20px; margin-bottom: 20px; }
+    #btn-acierto, #btn-error { font-size: 18px; font-weight: bold; padding: 15px 30px; border: none; border-radius: 8px; cursor: pointer; }
+    #btn-acierto { background: #28a745; color: #fff; }
+    #btn-acierto:hover { background: #218838; }
+    #btn-error { background: #dc3545; color: #fff; }
+    #btn-error:hover { background: #c82333; }
+    #btn-toggle { font-size: 20px; font-weight: bold; padding: 20px 40px; cursor: pointer; border: none; border-radius: 8px; background: #0069d9; color: #fff; }
+    #btn-toggle:hover { background: #0056b3; }
+    #restart-message { font-size: 18px; color: #ff0000; font-weight: bold; margin-top: 20px; display: none; }
+    #remaining-counter { position: fixed; bottom: 10px; right: 20px; font-size: 18px; color: #333; font-weight: bold; background: rgba(0,0,0,0.1); padding: 8px 12px; border-radius: 8px; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>LAS CHICAS DE MAX</h1>
+    <button id="btn-reiniciar">Reiniciar</button>
+  </header>
+  <div id="game-container">
+    <div id="final-message">FINAL!</div>
+    <div id="banner">
+      <div id="time" class="time">60</div>
+      <div id="word" class="word"></div>
+      <div id="score" class="score">0</div>
+    </div>
+    <div id="buttons">
+      <div id="row1">
+        <button id="btn-acierto">Acierto</button>
+        <button id="btn-error">Error</button>
+      </div>
+      <button id="btn-toggle">Reanudar (Usa ESPACIO)</button>
+    </div>
+    <div id="restart-message">Se han mostrado todas las palabras, reiniciando lista...</div>
+  </div>
+  <div id="remaining-counter">Palabras restantes: 0</div>
+  <script>
+    let palabras = [], palabrasUsadas = new Set(), totalPalabrasRestantes = 0;
+    let palabraActual = "", tiempoRestante = 60, puntos = 0, intervalo = null;
+    let juegoPausado = true, yaRespondido = true;
+    const finalMessage = document.getElementById("final-message"),
+          restartMessage = document.getElementById("restart-message"),
+          remainingCounter = document.getElementById("remaining-counter"),
+          timeEl = document.getElementById("time"),
+          wordEl = document.getElementById("word"),
+          scoreEl = document.getElementById("score"),
+          btnToggle = document.getElementById("btn-toggle"),
+          btnReiniciar = document.getElementById("btn-reiniciar"),
+          btnAcierto = document.getElementById("btn-acierto"),
+          btnError = document.getElementById("btn-error"),
+          colorOriginalPalabra = "#007bff";
+    window.onload = () => {
+      fetch("cadena.json")
+        .then(r => r.json())
+        .then(data => {
+          palabras = data;
+          console.log("Cargadas", palabras.length, "palabras");
+          totalPalabrasRestantes = palabras.length;
+          reiniciarJuego();
+        })
+        .catch(e => console.error("Error al cargar cadena.json:", e));
+    };
+    const actualizarContador = () => {
+      let restantes = totalPalabrasRestantes - palabrasUsadas.size;
+      remainingCounter.textContent = `Palabras restantes: ${restantes}`;
+      if(restantes <= 0){
+        restartMessage.style.display = "block";
+        setTimeout(() => restartMessage.style.display = "none", 3000);
+        palabrasUsadas.clear();
+        totalPalabrasRestantes = palabras.length;
+      }
+    };
+    function obtenerPalabraAleatoria(){
+      if(palabrasUsadas.size >= palabras.length){
+        palabrasUsadas.clear();
+        totalPalabrasRestantes = palabras.length;
+      }
+      let palabra, intentos = 0;
+      do {
+        palabra = palabras[Math.floor(Math.random()*palabras.length)];
+        intentos++;
+        if(intentos > 1000){ console.warn("Exceso de intentos, reiniciando lista"); palabrasUsadas.clear(); return obtenerPalabraAleatoria(); }
+      } while(palabrasUsadas.has(palabra));
+      palabrasUsadas.add(palabra);
+      actualizarContador();
+      return palabra;
+    }
+    function iniciarTemporizador(){
+      if(intervalo) clearInterval(intervalo);
+      intervalo = setInterval(() => {
+        if(!juegoPausado){
+          tiempoRestante--;
+          if(tiempoRestante <= 0){
+            tiempoRestante = 0;
+            clearInterval(intervalo);
+            finalMessage.style.display = "block";
+            btnToggle.disabled = true;
+          }
+          timeEl.textContent = tiempoRestante;
+        }
+      }, 1000);
+    }
+    const manejarAcierto = () => {
+      if(juegoPausado && !yaRespondido && tiempoRestante > 0){
+        puntos++; yaRespondido = true;
+        scoreEl.textContent = puntos;
+        wordEl.style.backgroundColor = "#28a745";
+      }
+    };
+    const manejarError = () => {
+      if(juegoPausado && !yaRespondido && tiempoRestante > 0){
+        if(puntos > 0) puntos--;
+        yaRespondido = true;
+        scoreEl.textContent = puntos;
+        wordEl.style.backgroundColor = "#dc3545";
+      }
+    };
+    function togglePausa(){
+      if(juegoPausado){
+        juegoPausado = false;
+        btnToggle.textContent = "Pausar (Usa ESPACIO)";
+        palabraActual = obtenerPalabraAleatoria();
+        wordEl.textContent = palabraActual;
+        wordEl.style.backgroundColor = colorOriginalPalabra;
+        yaRespondido = false;
+      } else {
+        juegoPausado = true;
+        btnToggle.textContent = "Reanudar (Usa ESPACIO)";
+      }
+    }
+    function reiniciarJuego(){
+      if(intervalo) clearInterval(intervalo);
+      tiempoRestante = 60; puntos = 0; juegoPausado = true; palabraActual = ""; yaRespondido = true;
+      timeEl.textContent = tiempoRestante;
+      scoreEl.textContent = puntos;
+      wordEl.textContent = "";
+      wordEl.style.backgroundColor = colorOriginalPalabra;
+      btnToggle.disabled = false;
+      btnToggle.textContent = "Reanudar (Usa ESPACIO)";
+      finalMessage.style.display = "none";
+      iniciarTemporizador();
+      actualizarContador();
+    }
+    btnAcierto.addEventListener("click", () => { manejarAcierto(); btnAcierto.blur(); });
+    btnError.addEventListener("click", () => { manejarError(); btnError.blur(); });
+    btnReiniciar.addEventListener("click", () => { reiniciarJuego(); btnReiniciar.blur(); });
+    document.addEventListener("keydown", (e) => { if(e.code==="Space"){ e.preventDefault(); togglePausa(); } });
+    reiniciarJuego();
+  </script>
+</body>
+</html>
